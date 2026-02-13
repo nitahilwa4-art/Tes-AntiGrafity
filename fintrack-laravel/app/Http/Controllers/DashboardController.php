@@ -32,9 +32,9 @@ class DashboardController extends Controller
             ->get();
         
         // Calculate stats
-        $totalIncome = $transactions->where('type', 'INCOME')->sum('amount');
-        $totalExpense = $transactions->where('type', 'EXPENSE')->sum('amount');
-        $balance = $wallets->sum('balance');
+        $totalIncome = (float) $transactions->where('type', 'INCOME')->sum('amount');
+        $totalExpense = (float) $transactions->where('type', 'EXPENSE')->sum('amount');
+        $balance = (float) $wallets->sum('balance');
         
         // Expense by category
         $expenseByCategory = $transactions

@@ -12,7 +12,11 @@ class WalletController extends Controller
     {
         $wallets = Wallet::where('user_id', $request->user()->id)
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($wallet) {
+                $wallet->balance = (float) $wallet->balance;
+                return $wallet;
+            });
         
         return Inertia::render('Wallets/Index', [
             'wallets' => $wallets,
