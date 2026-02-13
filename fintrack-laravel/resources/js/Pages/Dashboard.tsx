@@ -1,15 +1,16 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, useForm, router } from '@inertiajs/react';
 import { PageProps } from '@/types';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
     Plus, Sparkles, TrendingUp, TrendingDown, Wallet as WalletIcon,
     ArrowUpRight, ArrowDownRight, BarChart3, Target,
-    CalendarClock, AlertTriangle, ChevronDown, X, ArrowRightLeft
+    CalendarClock, AlertTriangle, ChevronDown, X, ArrowRightLeft,
+    Filter, Calendar, PieChart as PieChartIcon
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell
+    PieChart, Pie, Cell, Legend
 } from 'recharts';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -46,6 +47,12 @@ interface BudgetProgress {
     percentage: number;
 }
 
+interface CategoryData {
+    id: number;
+    name: string;
+    type: string;
+}
+
 interface Debt {
     id: number;
     type: string;
@@ -68,7 +75,7 @@ const formatShortIDR = (amount: number) => {
 };
 
 export default function Dashboard({
-    auth, stats, expenseByCategory, budgetProgress, recentTransactions, wallets, upcomingBills
+    auth, stats, expenseByCategory, budgetProgress, recentTransactions, wallets, upcomingBills, allTransactions, categories
 }: PageProps<{
     stats: Stats;
     expenseByCategory: Record<string, number>;
@@ -76,6 +83,8 @@ export default function Dashboard({
     recentTransactions: Transaction[];
     wallets: WalletData[];
     upcomingBills: Debt[];
+    allTransactions: Transaction[];
+    categories: CategoryData[];
 }>) {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [inputType, setInputType] = useState<'EXPENSE' | 'INCOME' | 'TRANSFER'>('EXPENSE');
@@ -110,9 +119,113 @@ export default function Dashboard({
         });
     };
 
-    // Chart Data 
-    const pieData = Object.entries(expenseByCategory).map(([name, value]) => ({ name, value }));
+    // --- TREND CHART STATE ---
+    type FilterType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM';
+    const getLocalDateString = (date: Date = new Date()) => {
+        const offset = date.getTimezoneOffset() * 60000;
+        return new Date(date.getTime() - offset).toISOString().split('T')[0];
+    };
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [activeFilter, setActiveFilter] = useState<FilterType>('DAILY');
+    const [trendMode, setTrendMode] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
+    const [trendStartDate, setTrendStartDate] = useState(getLocalDateString(monthStart));
+    const [trendEndDate, setTrendEndDate] = useState(getLocalDateString(now));
+    const [trendCategory, setTrendCategory] = useState<string>('ALL');
+
+    // --- PIE CHART STATE ---
+    const [pieStartDate, setPieStartDate] = useState(getLocalDateString(monthStart));
+    const [pieEndDate, setPieEndDate] = useState(getLocalDateString(now));
+
+    const txns = allTransactions || [];
+    const cats = categories || [];
+
+    const handleFilterChange = (filter: FilterType) => {
+        setActiveFilter(filter);
+        const end = new Date();
+        let start = new Date();
+        if (filter === 'DAILY') { start = new Date(end.getFullYear(), end.getMonth(), 1); setTrendMode('DAILY'); }
+        else if (filter === 'WEEKLY') { start.setMonth(end.getMonth() - 3); setTrendMode('WEEKLY'); }
+        else if (filter === 'MONTHLY') { start = new Date(end.getFullYear(), 0, 1); setTrendMode('MONTHLY'); }
+        else if (filter === 'YEARLY') { start.setFullYear(end.getFullYear() - 5); start.setMonth(0, 1); setTrendMode('MONTHLY'); }
+        else if (filter === 'CUSTOM') { setTrendMode('DAILY'); return; }
+        setTrendStartDate(getLocalDateString(start));
+        setTrendEndDate(getLocalDateString(end));
+    };
+
+    const handleDateChange = (field: 'start' | 'end', value: string) => {
+        if (field === 'start') setTrendStartDate(value); else setTrendEndDate(value);
+        setActiveFilter('CUSTOM');
+        setTrendMode('DAILY');
+    };
+
+    const trendData = useMemo(() => {
+        const start = new Date(trendStartDate);
+        const end = new Date(trendEndDate);
+        const data: { name: string; Pemasukan: number; Pengeluaran: number }[] = [];
+
+        const sumInRange = (s: Date, e: Date) => {
+            const sStr = getLocalDateString(s);
+            const eStr = getLocalDateString(e);
+            const inRange = txns.filter(t => {
+                const dateMatch = t.date >= sStr && t.date <= eStr;
+                const catMatch = trendCategory === 'ALL' || t.category === trendCategory;
+                return dateMatch && catMatch;
+            });
+            return {
+                income: inRange.filter(t => t.type === 'INCOME').reduce((a, t) => a + t.amount, 0),
+                expense: inRange.filter(t => t.type === 'EXPENSE').reduce((a, t) => a + t.amount, 0),
+            };
+        };
+
+        if (trendMode === 'DAILY') {
+            for (let d = new Date(start.getTime()); d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
+                const dayLabel = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+                const sums = sumInRange(d, d);
+                data.push({ name: dayLabel, Pemasukan: sums.income, Pengeluaran: sums.expense });
+            }
+        } else if (trendMode === 'WEEKLY') {
+            let current = new Date(start.getTime());
+            const day = current.getDay();
+            current.setDate(current.getDate() - day + (day === 0 ? -6 : 1));
+            while (current.getTime() <= end.getTime()) {
+                const weekStart = new Date(current.getTime());
+                const weekEnd = new Date(current.getTime()); weekEnd.setDate(weekEnd.getDate() + 6);
+                if (weekEnd.getTime() >= start.getTime()) {
+                    const label = `${weekStart.getDate()} ${weekStart.toLocaleDateString('id-ID', { month: 'short' })}`;
+                    const sums = sumInRange(weekStart, weekEnd);
+                    data.push({ name: label, Pemasukan: sums.income, Pengeluaran: sums.expense });
+                }
+                current.setDate(current.getDate() + 7);
+            }
+        } else if (trendMode === 'MONTHLY') {
+            let current = new Date(start.getFullYear(), start.getMonth(), 1);
+            while (current.getTime() <= end.getTime()) {
+                const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
+                const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+                if (monthEnd.getTime() >= start.getTime()) {
+                    const label = current.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' });
+                    const sums = sumInRange(monthStart, monthEnd);
+                    data.push({ name: label, Pemasukan: sums.income, Pengeluaran: sums.expense });
+                }
+                current.setMonth(current.getMonth() + 1);
+            }
+        }
+        return data;
+    }, [txns, trendStartDate, trendEndDate, trendMode, trendCategory]);
+
+    // --- PIE CHART DATA ---
+    const categoryData = useMemo(() => {
+        return txns
+            .filter(t => t.type === 'EXPENSE' && t.date >= pieStartDate && t.date <= pieEndDate)
+            .reduce((acc: Record<string, number>, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {})
+    }, [txns, pieStartDate, pieEndDate]);
+
+    const pieData = Object.entries(categoryData).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
     const totalCategoryExpense = pieData.reduce((a, b) => a + b.value, 0);
+
+    const PIE_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b'];
 
     // Budget colors
     const getBudgetColor = (pct: number) => {
@@ -223,32 +336,78 @@ export default function Dashboard({
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[500px]">
                     {/* Trend Bar Chart */}
                     <div className="lg:col-span-2 glass-card p-6 lg:p-8 rounded-[2rem] flex flex-col transition-all hover:shadow-lg duration-500 animate-fade-in-up" style={{ animationDelay: '400ms' }}>
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-800 dark:text-white">Tren Keuangan</h3>
-                                <p className="text-xs text-slate-400">Pemasukan vs Pengeluaran bulan ini</p>
+                        <div className="flex flex-col justify-between mb-6 gap-4">
+                            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                                        <BarChart3 className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 dark:text-white text-lg">Analisis Tren</h4>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Pemasukan vs Pengeluaran</p>
+                                    </div>
+                                </div>
+                                {/* Filters */}
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    <div className="relative">
+                                        <select
+                                            value={trendCategory}
+                                            onChange={(e) => setTrendCategory(e.target.value)}
+                                            className="appearance-none pl-3 pr-8 py-1.5 text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900 cursor-pointer max-w-[140px] transition-all hover:border-indigo-300"
+                                        >
+                                            <option value="ALL">Semua Kategori</option>
+                                            {cats.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                        </select>
+                                        <Filter className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                                    </div>
+                                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl overflow-x-auto scrollbar-hide">
+                                        {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY', 'CUSTOM'] as const).map(filter => (
+                                            <button
+                                                key={filter}
+                                                onClick={() => handleFilterChange(filter)}
+                                                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap active:scale-95 ${activeFilter === filter
+                                                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                                                    }`}
+                                            >
+                                                {filter === 'DAILY' ? 'Harian' : filter === 'WEEKLY' ? 'Mingguan' : filter === 'MONTHLY' ? 'Bulanan' : filter === 'YEARLY' ? 'Tahunan' : 'Custom'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
-                                <BarChart3 className="w-5 h-5" />
+                            <div className="flex items-center gap-2 text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded-xl border border-slate-100 dark:border-slate-700 w-fit">
+                                <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Range:</span>
+                                <input type="date" value={trendStartDate} onChange={(e) => handleDateChange('start', e.target.value)} className="bg-transparent font-medium text-slate-900 dark:text-slate-100 focus:outline-none text-xs" />
+                                <span className="text-slate-300">-</span>
+                                <input type="date" value={trendEndDate} onChange={(e) => handleDateChange('end', e.target.value)} className="bg-transparent font-medium text-slate-900 dark:text-slate-100 focus:outline-none text-xs" />
                             </div>
                         </div>
-                        <div className="flex-1 min-h-[300px]">
+                        <div className="flex-1 w-full min-h-[300px]">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={[
-                                    { name: 'Pemasukan', value: stats.totalIncome },
-                                    { name: 'Pengeluaran', value: stats.totalExpense },
-                                ]} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                                    <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => formatShortIDR(v)} width={80} />
+                                <BarChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" className="stroke-slate-100 dark:stroke-slate-800" />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }} dy={10} interval={trendData.length > 10 ? 'preserveStartEnd' : 0} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }} tickFormatter={formatShortIDR} />
                                     <Tooltip
+                                        cursor={{ fill: '#f8fafc' }}
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
                                         formatter={(value: number | undefined) => formatIDR(value ?? 0)}
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.15)', padding: '12px 16px', fontSize: '13px' }}
+                                        labelStyle={{ fontWeight: 'bold', color: '#1e293b', marginBottom: '0.5rem' }}
                                     />
-                                    <Bar dataKey="value" radius={[12, 12, 0, 0]} barSize={60}>
-                                        <Cell fill="#22c55e" />
-                                        <Cell fill="#ef4444" />
-                                    </Bar>
+                                    <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} iconType="circle" />
+                                    <Bar dataKey="Pemasukan" fill="url(#colorIncome)" radius={[6, 6, 0, 0]} maxBarSize={40} animationDuration={1000} />
+                                    <Bar dataKey="Pengeluaran" fill="url(#colorExpense)" radius={[6, 6, 0, 0]} maxBarSize={40} animationDuration={1000} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -256,29 +415,42 @@ export default function Dashboard({
 
                     {/* Category Pie Chart */}
                     <div className="glass-card p-6 lg:p-8 rounded-[2rem] flex flex-col transition-all hover:shadow-lg duration-500 animate-fade-in-up" style={{ animationDelay: '500ms' }}>
-                        <div className="mb-4">
-                            <h3 className="text-lg font-bold text-slate-800 dark:text-white">Distribusi Kategori</h3>
-                            <p className="text-xs text-slate-400">Pengeluaran per kategori</p>
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-pink-50 dark:bg-slate-800 text-pink-600 dark:text-pink-400 rounded-xl">
+                                    <PieChartIcon className="w-5 h-5" />
+                                </div>
+                                <h4 className="font-bold text-slate-800 dark:text-white text-lg">Distribusi</h4>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] font-bold bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-lg text-slate-500 dark:text-slate-400">
+                                <Calendar className="w-3 h-3" />
+                                Custom
+                            </div>
+                        </div>
+                        <div className="flex justify-center gap-2 mb-4">
+                            <input type="date" value={pieStartDate} onChange={(e) => setPieStartDate(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-lg text-[10px] text-slate-500 dark:text-slate-400 px-2 py-1 outline-none" />
+                            <input type="date" value={pieEndDate} onChange={(e) => setPieEndDate(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-lg text-[10px] text-slate-500 dark:text-slate-400 px-2 py-1 outline-none" />
                         </div>
                         {pieData.length > 0 ? (
                             <>
                                 <div className="flex-1 min-h-[200px] flex items-center justify-center">
                                     <ResponsiveContainer width="100%" height={200}>
                                         <PieChart>
-                                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value">
+                                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value" cornerRadius={6} animationDuration={800}>
                                                 {pieData.map((_, index) => (
-                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                                                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} strokeWidth={0} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip formatter={(value: number | undefined) => formatIDR(value ?? 0)} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '12px' }} />
+                                            <Tooltip formatter={(value: number | undefined) => formatIDR(value ?? 0)} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                                            <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '20px' }} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <div className="space-y-2 mt-4 max-h-[120px] overflow-y-auto scrollbar-hide">
+                                <div className="space-y-2 mt-2 max-h-[120px] overflow-y-auto scrollbar-hide">
                                     {pieData.slice(0, 5).map((item, idx) => (
                                         <div key={item.name} className="flex items-center justify-between text-xs">
                                             <div className="flex items-center">
-                                                <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                                                <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }} />
                                                 <span className="text-slate-600 dark:text-slate-300 truncate max-w-[120px]">{item.name}</span>
                                             </div>
                                             <span className="font-bold text-slate-700 dark:text-slate-200">
@@ -289,8 +461,9 @@ export default function Dashboard({
                                 </div>
                             </>
                         ) : (
-                            <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
-                                Belum ada data pengeluaran
+                            <div className="flex-1 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600">
+                                <PieChartIcon className="w-16 h-16 mb-2 opacity-20" />
+                                <p className="text-sm font-medium">Belum ada data</p>
                             </div>
                         )}
                     </div>

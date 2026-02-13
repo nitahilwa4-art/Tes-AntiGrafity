@@ -1,11 +1,12 @@
 import { PropsWithChildren, useState, useRef, useEffect } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import { Link, usePage, router } from '@inertiajs/react';
 import {
     LayoutDashboard, List, Zap, PieChart,
     Wallet as WalletIcon, LogOut, HandCoins,
     Target, Gem, CreditCard, Tags, User as UserIcon,
     Settings, FileDown, Bell, HelpCircle, Menu, X,
-    ShieldCheck, Check, AlertTriangle, Info, CheckCircle
+    ShieldCheck, Check, AlertTriangle, Info, CheckCircle,
+    Sun, Moon
 } from 'lucide-react';
 import { User } from '@/types';
 
@@ -32,6 +33,26 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
     const user = usePage().props.auth.user as User;
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const currentRoute = route().current() || '';
+
+    // Dark mode state
+    const [isDark, setIsDark] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('fintrack-theme');
+            if (saved) return saved === 'dark';
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        return false;
+    });
+
+    useEffect(() => {
+        const root = document.documentElement;
+        if (isDark) {
+            root.classList.add('dark');
+        } else {
+            root.classList.remove('dark');
+        }
+        localStorage.setItem('fintrack-theme', isDark ? 'dark' : 'light');
+    }, [isDark]);
 
     // Notification state
     const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -140,6 +161,10 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
                                 <p className="px-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Akun</p>
                                 <div className="space-y-1">
                                     <NavItem href={route('profile.edit')} icon={UserIcon} label="Profil Saya" active={currentRoute === 'profile.edit'} />
+                                    <NavItem href={route('settings.index')} icon={Settings} label="Pengaturan" active={currentRoute?.startsWith('settings') ?? false} />
+                                    <NavItem href={route('export.index')} icon={FileDown} label="Export Data" active={currentRoute?.startsWith('export') ?? false} />
+                                    <NavItem href={route('notifications.index')} icon={Bell} label="Notifikasi" active={currentRoute?.startsWith('notifications') ?? false} />
+                                    <NavItem href={route('help.index')} icon={HelpCircle} label="Bantuan" active={currentRoute?.startsWith('help') ?? false} />
                                 </div>
                             </div>
 
@@ -263,10 +288,23 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
                             )}
                         </div>
 
-                        {/* Help Button */}
-                        <button className="p-3 rounded-2xl bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-md transition-all active:scale-95 hidden sm:block" title="Bantuan">
-                            <HelpCircle className="w-5 h-5" />
+                        {/* Dark Mode Toggle */}
+                        <button
+                            onClick={() => setIsDark(!isDark)}
+                            className="p-3 rounded-2xl bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-md transition-all active:scale-95"
+                            title={isDark ? 'Mode Terang' : 'Mode Gelap'}
+                        >
+                            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                         </button>
+
+                        {/* Help Button */}
+                        <Link
+                            href="/help"
+                            className="p-3 rounded-2xl bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-md transition-all active:scale-95 hidden sm:block"
+                            title="Bantuan"
+                        >
+                            <HelpCircle className="w-5 h-5" />
+                        </Link>
                     </div>
                 </header>
 

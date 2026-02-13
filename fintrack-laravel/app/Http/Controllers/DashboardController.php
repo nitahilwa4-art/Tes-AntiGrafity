@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Transaction;
 use App\Models\Wallet;
+use App\Models\Category;
 use App\Models\Debt;
 use App\Models\Budget;
 use Illuminate\Http\Request;
@@ -67,6 +68,24 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
         
+        // Get all transactions for chart filtering
+        $allTransactions = Transaction::forUser($user->id)
+            ->with(['wallet'])
+            ->orderBy('date', 'desc')
+            ->get()
+            ->map(fn($t) => [
+                'id' => $t->id,
+                'date' => $t->date->format('Y-m-d'),
+                'description' => $t->description,
+                'amount' => $t->amount,
+                'type' => $t->type,
+                'category' => $t->category,
+                'wallet' => $t->wallet ? ['id' => $t->wallet->id, 'name' => $t->wallet->name] : null,
+            ]);
+
+        // Get user categories
+        $categories = Category::userCategories($user->id)->get();
+
         return Inertia::render('Dashboard', [
             'stats' => [
                 'totalIncome' => $totalIncome,
@@ -80,7 +99,8 @@ class DashboardController extends Controller
             'recentTransactions' => $transactions->take(10),
             'wallets' => $wallets,
             'upcomingBills' => $upcomingBills,
+            'allTransactions' => $allTransactions,
+            'categories' => $categories,
         ]);
     }
 }
-

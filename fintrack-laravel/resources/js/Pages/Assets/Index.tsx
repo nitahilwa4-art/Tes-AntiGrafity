@@ -178,10 +178,20 @@ export default function AssetsIndex({ auth, assets, summary }: PageProps<{ asset
                         <div className="p-5 pt-4 overflow-y-auto scrollbar-hide">
                             <form onSubmit={handleSubmit} className="space-y-3">
                                 <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Nama Aset</label><input type="text" required value={data.name} onChange={(e) => setData('name', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="Rumah, Mobil..." /></div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Tipe</label><select value={data.type} onChange={(e) => setData('type', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm bg-slate-50 dark:bg-slate-900/50 outline-none font-medium text-slate-900 dark:text-white"><option value="PROPERTY">Properti</option><option value="VEHICLE">Kendaraan</option><option value="INVESTMENT">Investasi</option><option value="OTHER">Lainnya</option></select></div>
-                                    <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Nilai (Rp)</label><input type="text" required value={data.value} onChange={(e) => handleAmountChange(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="0" /></div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Tipe</label>
+                                    <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+                                        {([{ v: 'PROPERTY', l: 'Properti' }, { v: 'VEHICLE', l: 'Kendaraan' }, { v: 'INVESTMENT', l: 'Investasi' }, { v: 'OTHER', l: 'Lainnya' }] as const).map(opt => (
+                                            <button key={opt.v} type="button" onClick={() => setData('type', opt.v)}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${data.type === opt.v
+                                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                                                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                                                    }`}
+                                            >{opt.l}</button>
+                                        ))}
+                                    </div>
                                 </div>
+                                <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Nilai (Rp)</label><input type="text" required value={data.value} onChange={(e) => handleAmountChange(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="0" /></div>
                                 <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Deskripsi</label><input type="text" value={data.description} onChange={(e) => setData('description', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="Opsional" /></div>
                                 <div className="flex space-x-3 pt-4">
                                     <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors active:scale-95">Batal</button>

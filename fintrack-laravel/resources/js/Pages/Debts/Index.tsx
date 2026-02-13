@@ -195,11 +195,13 @@ export default function DebtsIndex({ auth, debts, summary, filters }: PageProps<
                             <form onSubmit={handleSubmit} className="space-y-3">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Tipe</label>
-                                    <select value={data.type} onChange={(e) => setData('type', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm bg-slate-50 dark:bg-slate-900/50 outline-none font-medium text-slate-900 dark:text-white">
-                                        <option value="DEBT">Hutang</option>
-                                        <option value="RECEIVABLE">Piutang</option>
-                                        <option value="BILL">Tagihan</option>
-                                    </select>
+                                    <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+                                        {([{ v: 'DEBT', l: 'Hutang', c: 'bg-red-500 text-white shadow-lg shadow-red-500/30' }, { v: 'RECEIVABLE', l: 'Piutang', c: 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' }, { v: 'BILL', l: 'Tagihan', c: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30' }] as const).map(opt => (
+                                            <button key={opt.v} type="button" onClick={() => setData('type', opt.v)}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${data.type === opt.v ? opt.c : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
+                                            >{opt.l}</button>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Nama</label><input type="text" required value={data.person} onChange={(e) => setData('person', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="Nama orang/instansi" /></div>
                                 <div className="grid grid-cols-2 gap-3">

@@ -22,7 +22,7 @@ class TransactionController extends Controller
     {
         $user = $request->user();
         
-        $query = Transaction::forUser($user->id())
+        $query = Transaction::forUser($user->id)
             ->with(['wallet', 'toWallet'])
             ->orderBy('date', 'desc');
         

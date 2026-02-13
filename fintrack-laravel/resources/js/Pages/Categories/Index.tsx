@@ -140,7 +140,15 @@ export default function CategoriesIndex({ auth, categories }: PageProps<{ catego
                         <div className="p-5 pt-4 overflow-y-auto scrollbar-hide">
                             <form onSubmit={handleSubmit} className="space-y-3">
                                 <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Nama</label><input type="text" required value={data.name} onChange={(e) => setData('name', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="Makanan" /></div>
-                                <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Tipe</label><select value={data.type} onChange={(e) => setData('type', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm bg-slate-50 dark:bg-slate-900/50 outline-none font-medium text-slate-900 dark:text-white"><option value="EXPENSE">Pengeluaran</option><option value="INCOME">Pemasukan</option></select></div>
+                                <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Tipe</label>
+                                    <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+                                        {([{ v: 'EXPENSE', l: 'Pengeluaran', c: 'bg-red-500 text-white shadow-lg shadow-red-500/30' }, { v: 'INCOME', l: 'Pemasukan', c: 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' }] as const).map(opt => (
+                                            <button key={opt.v} type="button" onClick={() => setData('type', opt.v)}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${data.type === opt.v ? opt.c : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
+                                            >{opt.l}</button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <div className="flex space-x-3 pt-4">
                                     <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-colors active:scale-95">Batal</button>
                                     <button type="submit" disabled={processing} className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl text-sm font-bold shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-transform disabled:opacity-50">{processing ? '...' : 'Simpan'}</button>

@@ -69,6 +69,12 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/profile/financial', [ProfileController::class, 'updateFinancialProfile'])->name('profile.financial');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     
+    // Settings, Export, Notifications, Help (frontend-only pages)
+    Route::get('/settings', fn () => \Inertia\Inertia::render('Settings/Index'))->name('settings.index');
+    Route::get('/export', fn () => \Inertia\Inertia::render('Export/Index'))->name('export.index');
+    Route::get('/notifications', fn () => \Inertia\Inertia::render('Notifications/Index'))->name('notifications.index');
+    Route::get('/help', fn () => \Inertia\Inertia::render('Help/Index'))->name('help.index');
+    
     // Admin routes (protected by admin middleware)
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
