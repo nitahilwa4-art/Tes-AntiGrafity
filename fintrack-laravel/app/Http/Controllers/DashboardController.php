@@ -16,53 +16,109 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        
-        // Get current month date range
-        $start = now()->startOfMonth()->format('Y-m-d');
-        $end = now()->endOfMonth()->format('Y-m-d');
+        // Filter parameters
+        $startDate = $request->input('startDate', now()->startOfMonth()->format('Y-m-d'));
+        $endDate = $request->input('endDate', now()->endOfMonth()->format('Y-m-d'));
+        $mode = $request->input('mode', 'DAILY'); // DAILY, WEEKLY, MONTHLY
         
         // Get user wallets
         $wallets = Wallet::where('user_id', $user->id)->get();
         
-        // Get transactions for current month
-        $transactions = Transaction::forUser($user->id)
-            ->inDateRange($start, $end)
+        // Get recent transactions (limit 10) instead of all
+        $recentTransactions = Transaction::forUser($user->id)
             ->with(['wallet', 'toWallet'])
             ->orderBy('date', 'desc')
+            ->take(10)
             ->get();
         
-        // Calculate stats
-        $totalIncome = (float) $transactions->where('type', 'INCOME')->sum('amount');
-        $totalExpense = (float) $transactions->where('type', 'EXPENSE')->sum('amount');
-        $balance = (float) $wallets->sum('balance');
+        // Calculate stats (Totals for current view)
+        // We can optimize this to run one query for income/expense
+        $statsData = Transaction::forUser($user->id)
+            ->inDateRange($startDate, $endDate)
+            ->selectRaw('type, SUM(amount) as total')
+            ->groupBy('type')
+            ->pluck('total', 'type');
+
+        $totalIncome = (float) ($statsData['INCOME'] ?? 0);
+        $totalExpense = (float) ($statsData['EXPENSE'] ?? 0);
+        $balance = (float) $wallets->sum('balance'); // Current balance is always real-time from wallets
+        $transactionCount = Transaction::forUser($user->id)->inDateRange($startDate, $endDate)->count();
         
-        // Expense by category
-        $expenseByCategory = $transactions
-            ->where('type', 'EXPENSE')
-            ->groupBy('category')
-            ->map(fn($group) => $group->sum('amount'))
-            ->sortDesc()
-            ->toArray();
+        // --- Aggregation for Trend Chart ---
+        $dateFormat = match($mode) {
+            'MONTHLY' => '%Y-%m',
+            'YEARLY' => '%Y',
+            default => '%Y-%m-%d' // DAILY and WEEKLY (for now, or implement strict weekly)
+        };
+        
+        $groupCol = 'group_date';
+        $query = Transaction::forUser($user->id)
+            ->inDateRange($startDate, $endDate);
+            
+        if ($mode === 'WEEKLY') {
+            // Weekly grouping in MySQL
+            $query->selectRaw("YEARWEEK(date, 1) as group_date, type, SUM(amount) as total");
+        } else {
+             $query->selectRaw("DATE_FORMAT(date, '$dateFormat') as group_date, type, SUM(amount) as total");
+        }
 
-        // Budget progress
-        $budgets = Budget::where('user_id', $user->id)->get();
+        $trendQuery = $query->groupBy('group_date', 'type')
+            ->orderBy('group_date')
+            ->get();
+            
+        // Process trend data
+        $groupedTrend = [];
+        foreach ($trendQuery as $item) {
+            $key = $item->group_date;
+            if (!isset($groupedTrend[$key])) {
+                $label = $key;
+                if ($mode === 'DAILY') {
+                    $label = Carbon::parse($key)->translatedFormat('d M');
+                } elseif ($mode === 'MONTHLY') {
+                     $label = Carbon::parse($key . '-01')->translatedFormat('M Y');
+                } elseif ($mode === 'YEARLY') {
+                    $label = $key;
+                } elseif ($mode === 'WEEKLY') {
+                    // key is YearWeek e.g. 202607
+                    // Need to convert to label
+                    $year = substr($key, 0, 4);
+                    $week = substr($key, 4);
+                    $date = Carbon::now()->setISODate($year, $week);
+                    $label = $date->translatedFormat('d M') . ' - ' . $date->addDays(6)->translatedFormat('d M');
+                }
 
-        $budgetProgress = $budgets->map(function ($budget) use ($user) {
-            $now = Carbon::now();
-            $start = null;
-            $end = null;
-
-            if ($budget->period === 'WEEKLY') {
-                $start = $now->copy()->startOfWeek()->format('Y-m-d');
-                $end = $now->copy()->endOfWeek()->format('Y-m-d');
-            } elseif ($budget->period === 'YEARLY') {
-                $start = $now->copy()->startOfYear()->format('Y-m-d');
-                $end = $now->copy()->endOfYear()->format('Y-m-d');
-            } else {
-                // Default to MONTHLY
-                $start = $now->copy()->startOfMonth()->format('Y-m-d');
-                $end = $now->copy()->endOfMonth()->format('Y-m-d');
+                $groupedTrend[$key] = ['name' => $label, 'Pemasukan' => 0, 'Pengeluaran' => 0, 'date' => $key];
             }
+            if ($item->type === 'INCOME') $groupedTrend[$key]['Pemasukan'] = (float) $item->total;
+            if ($item->type === 'EXPENSE') $groupedTrend[$key]['Pengeluaran'] = (float) $item->total;
+        }
+        $trendData = array_values($groupedTrend);
+
+        // --- Aggregation for Pie Chart (Expense by Category) ---
+        $pieData = Transaction::forUser($user->id)
+            ->inDateRange($startDate, $endDate)
+            ->where('type', 'EXPENSE')
+            ->selectRaw('category as name, SUM(amount) as value')
+            ->groupBy('category')
+            ->orderByDesc('value')
+            ->get()
+            ->map(fn($item) => ['name' => $item->name, 'value' => (float) $item->value]);
+
+        // Budget progress (Keep existing logic or optimize)
+        $budgets = Budget::where('user_id', $user->id)->get();
+        // ... (reuse existing budget logic, it queries inside loop but it's okay for < 20 budgets)
+        $budgetProgress = $budgets->map(function ($budget) use ($user) {
+             $now = Carbon::now();
+             $start = $now->copy()->startOfMonth()->format('Y-m-d');
+             $end = $now->copy()->endOfMonth()->format('Y-m-d');
+             
+             if ($budget->period === 'WEEKLY') {
+                 $start = $now->copy()->startOfWeek()->format('Y-m-d');
+                 $end = $now->copy()->endOfWeek()->format('Y-m-d');
+             } elseif ($budget->period === 'YEARLY') {
+                 $start = $now->copy()->startOfYear()->format('Y-m-d');
+                 $end = $now->copy()->endOfYear()->format('Y-m-d');
+             }
 
             $spent = Transaction::forUser($user->id)
                 ->where('type', 'EXPENSE')
@@ -85,22 +141,7 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
         
-        // Get all transactions for chart filtering
-        $allTransactions = Transaction::forUser($user->id)
-            ->with(['wallet'])
-            ->orderBy('date', 'desc')
-            ->get()
-            ->map(fn($t) => [
-                'id' => $t->id,
-                'date' => $t->date->format('Y-m-d'),
-                'description' => $t->description,
-                'amount' => (float) $t->amount,
-                'type' => $t->type,
-                'category' => $t->category,
-                'wallet' => $t->wallet ? ['id' => $t->wallet->id, 'name' => $t->wallet->name] : null,
-            ]);
-
-        // Get user categories
+        // Get user categories for standard inputs
         $categories = Category::userCategories($user->id)->get();
 
         return Inertia::render('Dashboard', [
@@ -109,15 +150,20 @@ class DashboardController extends Controller
                 'totalExpense' => $totalExpense,
                 'balance' => $balance,
                 'netFlow' => $totalIncome - $totalExpense,
-                'transactionCount' => $transactions->count(),
+                'transactionCount' => $transactionCount,
             ],
-            'expenseByCategory' => $expenseByCategory,
+            'trendData' => $trendData,
+            'pieData' => $pieData, // Replaces expenseByCategory
             'budgetProgress' => $budgetProgress,
-            'recentTransactions' => $transactions->take(10),
+            'recentTransactions' => $recentTransactions,
             'wallets' => $wallets,
             'upcomingBills' => $upcomingBills,
-            'allTransactions' => $allTransactions,
             'categories' => $categories,
+            'filters' => [
+                'startDate' => $startDate,
+                'endDate' => $endDate,
+                'mode' => $mode,
+            ]
         ]);
     }
 }

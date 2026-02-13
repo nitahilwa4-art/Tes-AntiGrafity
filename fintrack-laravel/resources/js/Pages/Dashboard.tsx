@@ -98,20 +98,30 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     return null;
 };
 
-export default function Dashboard({
-    // ... (lines 78-403 kept implicitly by context matching, but I need to be careful with replace_file_content limits. I can't replace from 77 to 446 in one go if I want to keep the middle. I should inject CustomTooltip first, then replace Tooltips separately or check if I can do it in chunks.
-    // MultiReplace is better here.
+interface TrendData {
+    name: string;
+    Pemasukan: number;
+    Pengeluaran: number;
+    date: string; // Y-m-d or formatted
+}
 
-    auth, stats, expenseByCategory, budgetProgress, recentTransactions, wallets, upcomingBills, allTransactions, categories
+interface PieData {
+    name: string;
+    value: number;
+}
+
+export default function Dashboard({
+    auth, stats, trendData, pieData, budgetProgress, recentTransactions, wallets, upcomingBills, categories, filters
 }: PageProps<{
     stats: Stats;
-    expenseByCategory: Record<string, number>;
+    trendData: TrendData[];
+    pieData: PieData[];
     budgetProgress: BudgetProgress[];
     recentTransactions: Transaction[];
     wallets: WalletData[];
     upcomingBills: Debt[];
-    allTransactions: Transaction[];
     categories: CategoryData[];
+    filters: { startDate: string; endDate: string; mode: string };
 }>) {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [inputType, setInputType] = useState<'EXPENSE' | 'INCOME' | 'TRANSFER'>('EXPENSE');
@@ -148,113 +158,57 @@ export default function Dashboard({
         });
     };
 
-    // --- TREND CHART STATE ---
-    type FilterType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'CUSTOM';
+    // --- QUERY STATE ---
+    const [activeFilter, setActiveFilter] = useState<string>(filters.mode);
+
+    // Helper
     const getLocalDateString = (date: Date = new Date()) => {
         const offset = date.getTimezoneOffset() * 60000;
         return new Date(date.getTime() - offset).toISOString().split('T')[0];
     };
 
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [activeFilter, setActiveFilter] = useState<FilterType>('DAILY');
-    const [trendMode, setTrendMode] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
-    const [trendStartDate, setTrendStartDate] = useState(getLocalDateString(monthStart));
-    const [trendEndDate, setTrendEndDate] = useState(getLocalDateString(now));
-    const [trendCategory, setTrendCategory] = useState<string>('ALL');
+    const updateParams = (newParams: Record<string, any>) => {
+        router.get(route('dashboard'), { ...filters, ...newParams }, {
+            preserveState: true,
+            preserveScroll: true,
+            only: ['stats', 'trendData', 'pieData', 'filters']
+        });
+    };
 
-    // --- PIE CHART STATE ---
-    const [pieStartDate, setPieStartDate] = useState(getLocalDateString(monthStart));
-    const [pieEndDate, setPieEndDate] = useState(getLocalDateString(now));
-
-    const txns = allTransactions || [];
-    const cats = categories || [];
-
-    const handleFilterChange = (filter: FilterType) => {
+    const handleFilterChange = (filter: string) => {
         setActiveFilter(filter);
+        if (filter === 'CUSTOM') return;
+
         const end = new Date();
         let start = new Date();
-        if (filter === 'DAILY') { start = new Date(end.getFullYear(), end.getMonth(), 1); setTrendMode('DAILY'); }
-        else if (filter === 'WEEKLY') { start.setMonth(end.getMonth() - 3); setTrendMode('WEEKLY'); }
-        else if (filter === 'MONTHLY') { start = new Date(end.getFullYear(), 0, 1); setTrendMode('MONTHLY'); }
-        else if (filter === 'YEARLY') { start.setFullYear(end.getFullYear() - 5); start.setMonth(0, 1); setTrendMode('MONTHLY'); }
-        else if (filter === 'CUSTOM') { setTrendMode('DAILY'); return; }
-        setTrendStartDate(getLocalDateString(start));
-        setTrendEndDate(getLocalDateString(end));
+        let mode = 'DAILY';
+
+        if (filter === 'DAILY') { start = new Date(end.getFullYear(), end.getMonth(), 1); mode = 'DAILY'; }
+        else if (filter === 'WEEKLY') { start.setMonth(end.getMonth() - 3); mode = 'WEEKLY'; }
+        else if (filter === 'MONTHLY') { start = new Date(end.getFullYear(), 0, 1); mode = 'MONTHLY'; }
+        else if (filter === 'YEARLY') { start.setFullYear(end.getFullYear() - 5); start.setMonth(0, 1); mode = 'YEARLY'; }
+
+        updateParams({
+            startDate: getLocalDateString(start),
+            endDate: getLocalDateString(end),
+            mode
+        });
     };
 
     const handleDateChange = (field: 'start' | 'end', value: string) => {
-        if (field === 'start') setTrendStartDate(value); else setTrendEndDate(value);
+        updateParams({
+            [field === 'start' ? 'startDate' : 'endDate']: value,
+            mode: 'DAILY' // Custom range implies detailed view usually
+        });
         setActiveFilter('CUSTOM');
-        setTrendMode('DAILY');
     };
 
-    const trendData = useMemo(() => {
-        const start = new Date(trendStartDate);
-        const end = new Date(trendEndDate);
-        const data: { name: string; Pemasukan: number; Pengeluaran: number }[] = [];
-
-        const sumInRange = (s: Date, e: Date) => {
-            const sStr = getLocalDateString(s);
-            const eStr = getLocalDateString(e);
-            const inRange = txns.filter(t => {
-                const dateMatch = t.date >= sStr && t.date <= eStr;
-                const catMatch = trendCategory === 'ALL' || t.category === trendCategory;
-                return dateMatch && catMatch;
-            });
-            return {
-                income: inRange.filter(t => t.type === 'INCOME').reduce((a, t) => a + t.amount, 0),
-                expense: inRange.filter(t => t.type === 'EXPENSE').reduce((a, t) => a + t.amount, 0),
-            };
-        };
-
-        if (trendMode === 'DAILY') {
-            for (let d = new Date(start.getTime()); d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
-                const dayLabel = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-                const sums = sumInRange(d, d);
-                data.push({ name: dayLabel, Pemasukan: sums.income, Pengeluaran: sums.expense });
-            }
-        } else if (trendMode === 'WEEKLY') {
-            let current = new Date(start.getTime());
-            const day = current.getDay();
-            current.setDate(current.getDate() - day + (day === 0 ? -6 : 1));
-            while (current.getTime() <= end.getTime()) {
-                const weekStart = new Date(current.getTime());
-                const weekEnd = new Date(current.getTime()); weekEnd.setDate(weekEnd.getDate() + 6);
-                if (weekEnd.getTime() >= start.getTime()) {
-                    const label = `${weekStart.getDate()} ${weekStart.toLocaleDateString('id-ID', { month: 'short' })}`;
-                    const sums = sumInRange(weekStart, weekEnd);
-                    data.push({ name: label, Pemasukan: sums.income, Pengeluaran: sums.expense });
-                }
-                current.setDate(current.getDate() + 7);
-            }
-        } else if (trendMode === 'MONTHLY') {
-            let current = new Date(start.getFullYear(), start.getMonth(), 1);
-            while (current.getTime() <= end.getTime()) {
-                const monthStart = new Date(current.getFullYear(), current.getMonth(), 1);
-                const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-                if (monthEnd.getTime() >= start.getTime()) {
-                    const label = current.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' });
-                    const sums = sumInRange(monthStart, monthEnd);
-                    data.push({ name: label, Pemasukan: sums.income, Pengeluaran: sums.expense });
-                }
-                current.setMonth(current.getMonth() + 1);
-            }
-        }
-        return data;
-    }, [txns, trendStartDate, trendEndDate, trendMode, trendCategory]);
-
-    // --- PIE CHART DATA ---
-    const categoryData = useMemo(() => {
-        return txns
-            .filter(t => t.type === 'EXPENSE' && t.date >= pieStartDate && t.date <= pieEndDate)
-            .reduce((acc: Record<string, number>, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {})
-    }, [txns, pieStartDate, pieEndDate]);
-
-    const pieData = Object.entries(categoryData).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    // Derived data for display
     const totalCategoryExpense = pieData.reduce((a, b) => a + b.value, 0);
-
     const PIE_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b'];
+
+    // Categories needed for forms
+    const cats = categories || [];
 
     // Budget colors
     const getBudgetColor = (pct: number) => {
@@ -387,17 +341,7 @@ export default function Dashboard({
                                 </div>
                                 {/* Filters */}
                                 <div className="flex flex-wrap gap-2 items-center">
-                                    <div className="relative">
-                                        <select
-                                            value={trendCategory}
-                                            onChange={(e) => setTrendCategory(e.target.value)}
-                                            className="appearance-none pl-3 pr-8 py-1.5 text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900 cursor-pointer max-w-[140px] transition-all hover:border-indigo-300"
-                                        >
-                                            <option value="ALL">Semua Kategori</option>
-                                            {cats.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                        </select>
-                                        <Filter className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-                                    </div>
+
                                     <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl overflow-x-auto scrollbar-hide">
                                         {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY', 'CUSTOM'] as const).map(filter => (
                                             <button
@@ -416,9 +360,9 @@ export default function Dashboard({
                             </div>
                             <div className="flex items-center gap-2 text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded-xl border border-slate-100 dark:border-slate-700 w-fit">
                                 <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Range:</span>
-                                <input type="date" value={trendStartDate} onChange={(e) => handleDateChange('start', e.target.value)} className="bg-transparent font-medium text-slate-900 dark:text-slate-100 focus:outline-none text-xs" />
+                                <input type="date" value={filters.startDate} onChange={(e) => handleDateChange('start', e.target.value)} className="bg-transparent font-medium text-slate-900 dark:text-slate-100 focus:outline-none text-xs" />
                                 <span className="text-slate-300">-</span>
-                                <input type="date" value={trendEndDate} onChange={(e) => handleDateChange('end', e.target.value)} className="bg-transparent font-medium text-slate-900 dark:text-slate-100 focus:outline-none text-xs" />
+                                <input type="date" value={filters.endDate} onChange={(e) => handleDateChange('end', e.target.value)} className="bg-transparent font-medium text-slate-900 dark:text-slate-100 focus:outline-none text-xs" />
                             </div>
                         </div>
                         <div className="flex-1 w-full min-h-[300px]">
@@ -464,8 +408,8 @@ export default function Dashboard({
                             </div>
                         </div>
                         <div className="flex justify-center gap-2 mb-4">
-                            <input type="date" value={pieStartDate} onChange={(e) => setPieStartDate(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-lg text-[10px] text-slate-500 dark:text-slate-400 px-2 py-1 outline-none" />
-                            <input type="date" value={pieEndDate} onChange={(e) => setPieEndDate(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-lg text-[10px] text-slate-500 dark:text-slate-400 px-2 py-1 outline-none" />
+                            <input type="date" value={filters.startDate} onChange={(e) => handleDateChange('start', e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-lg text-[10px] text-slate-500 dark:text-slate-400 px-2 py-1 outline-none" />
+                            <input type="date" value={filters.endDate} onChange={(e) => handleDateChange('end', e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-lg text-[10px] text-slate-500 dark:text-slate-400 px-2 py-1 outline-none" />
                         </div>
                         {pieData.length > 0 ? (
                             <>
