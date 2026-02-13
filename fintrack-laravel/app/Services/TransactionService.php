@@ -5,107 +5,156 @@ namespace App\Services;
 use App\Models\Transaction;
 use App\Models\Wallet;
 use Illuminate\Support\Facades\DB;
+use App\Models\Budget;
+use Illuminate\Support\Carbon;
+use App\Notifications\BudgetExceeded;
 
 class TransactionService
 {
     /**
      * Create multiple transactions with wallet balance updates
      */
-    public function createTransactions(array $transactions, int $userId, int $walletId): void
+    public function createTransactions(array $transactionsData, int $userId, int $walletId)
     {
-        DB::transaction(function () use ($transactions, $userId, $walletId) {
-            foreach ($transactions as $data) {
+        return DB::transaction(function () use ($transactionsData, $userId, $walletId) {
+            $wallet = Wallet::findOrFail($walletId);
+            $newTransactions = [];
+
+            foreach ($transactionsData as $data) {
                 $transaction = Transaction::create([
                     'user_id' => $userId,
-                    'wallet_id' => $data['wallet_id'] ?? $walletId,
+                    'wallet_id' => $walletId,
                     'to_wallet_id' => $data['to_wallet_id'] ?? null,
-                    'date' => $data['date'],
-                    'description' => $data['description'],
                     'amount' => $data['amount'],
                     'type' => $data['type'],
                     'category' => $data['category'],
+                    'description' => $data['description'],
+                    'date' => $data['date'],
                 ]);
 
-                // Update wallet balance
-                $this->updateWalletBalance($transaction);
+                // Update Wallet Balance
+                if ($data['type'] === 'INCOME') {
+                    $wallet->increment('balance', $data['amount']);
+                } elseif ($data['type'] === 'EXPENSE') {
+                    $wallet->decrement('balance', $data['amount']);
+                    $this->checkBudget($transaction);
+                } elseif ($data['type'] === 'TRANSFER' && isset($data['to_wallet_id'])) {
+                    $wallet->decrement('balance', $data['amount']);
+                    Wallet::where('id', $data['to_wallet_id'])->increment('balance', $data['amount']);
+                }
+
+                $newTransactions[] = $transaction;
             }
+
+            return $newTransactions;
         });
     }
 
-    /**
-     * Update transaction and adjust wallet balances
-     */
-    public function updateTransaction(Transaction $transaction, array $data): void
+    public function updateTransaction(Transaction $transaction, array $data)
     {
-        DB::transaction(function () use ($transaction, $data) {
-            // Revert old transaction balance
-            $this->revertWalletBalance($transaction);
+        return DB::transaction(function () use ($transaction, $data) {
+            // 1. Revert old balance
+            if ($transaction->type === 'INCOME') {
+                $transaction->wallet->decrement('balance', $transaction->amount);
+            } elseif ($transaction->type === 'EXPENSE') {
+                $transaction->wallet->increment('balance', $transaction->amount);
+            } elseif ($transaction->type === 'TRANSFER' && $transaction->to_wallet_id) {
+                $transaction->wallet->increment('balance', $transaction->amount);
+                Wallet::where('id', $transaction->to_wallet_id)->decrement('balance', $transaction->amount);
+            }
 
-            // Update transaction
-            $transaction->update($data);
+            // 2. Update Transaction
+            $transaction->update([
+                'wallet_id' => $data['wallet_id'],
+                'to_wallet_id' => $data['to_wallet_id'] ?? null,
+                'amount' => $data['amount'],
+                'type' => $data['type'],
+                'category' => $data['category'],
+                'description' => $data['description'],
+                'date' => $data['date'],
+            ]);
 
-            // Apply new balance
-            $this->updateWalletBalance($transaction);
+            // 3. Apply new balance
+            $wallet = Wallet::findOrFail($data['wallet_id']);
+            if ($data['type'] === 'INCOME') {
+                $wallet->increment('balance', $data['amount']);
+            } elseif ($data['type'] === 'EXPENSE') {
+                $wallet->decrement('balance', $data['amount']);
+                $this->checkBudget($transaction);
+            } elseif ($data['type'] === 'TRANSFER' && isset($data['to_wallet_id'])) {
+                $wallet->decrement('balance', $data['amount']);
+                Wallet::where('id', $data['to_wallet_id'])->increment('balance', $data['amount']);
+            }
+
+            return $transaction;
         });
     }
 
-    /**
-     * Delete transaction and revert wallet balance
-     */
-    public function deleteTransaction(Transaction $transaction): void
+    public function deleteTransaction(Transaction $transaction)
     {
-        DB::transaction(function () use ($transaction) {
-            $this->revertWalletBalance($transaction);
+        return DB::transaction(function () use ($transaction) {
+            $wallet = $transaction->wallet;
+
+            // Revert Balance
+            if ($transaction->type === 'INCOME') {
+                $wallet->decrement('balance', $transaction->amount);
+            } elseif ($transaction->type === 'EXPENSE') {
+                $wallet->increment('balance', $transaction->amount);
+            } elseif ($transaction->type === 'TRANSFER' && $transaction->to_wallet_id) {
+                $wallet->increment('balance', $transaction->amount);
+                Wallet::where('id', $transaction->to_wallet_id)->decrement('balance', $transaction->amount);
+            }
+
             $transaction->delete();
         });
     }
 
-    /**
-     * Update wallet balance based on transaction
-     */
-    protected function updateWalletBalance(Transaction $transaction): void
+    protected function checkBudget(Transaction $transaction)
     {
-        $wallet = Wallet::find($transaction->wallet_id);
-        
-        if (!$wallet) return;
+        $user = $transaction->user;
+        // Find all budgets for this category (could be Weekly AND Monthly)
+        $budgets = \App\Models\Budget::where('user_id', $user->id)
+            ->where('category', $transaction->category)
+            ->get();
 
-        if ($transaction->type === 'INCOME') {
-            $wallet->increment('balance', $transaction->amount);
-        } elseif ($transaction->type === 'EXPENSE') {
-            $wallet->decrement('balance', $transaction->amount);
-        } elseif ($transaction->type === 'TRANSFER' && $transaction->to_wallet_id) {
-            // Deduct from source wallet
-            $wallet->decrement('balance', $transaction->amount);
-            
-            // Add to destination wallet
-            $toWallet = Wallet::find($transaction->to_wallet_id);
-            if ($toWallet) {
-                $toWallet->increment('balance', $transaction->amount);
+        foreach ($budgets as $budget) {
+            $date = \Illuminate\Support\Carbon::parse($transaction->date);
+            $start = null;
+            $end = null;
+
+            if ($budget->period === 'WEEKLY') {
+                $start = $date->copy()->startOfWeek()->format('Y-m-d');
+                $end = $date->copy()->endOfWeek()->format('Y-m-d');
+            } elseif ($budget->period === 'YEARLY') {
+                $start = $date->copy()->startOfYear()->format('Y-m-d');
+                $end = $date->copy()->endOfYear()->format('Y-m-d');
+            } else {
+                // Default to MONTHLY
+                $start = $date->copy()->startOfMonth()->format('Y-m-d');
+                $end = $date->copy()->endOfMonth()->format('Y-m-d');
             }
-        }
-    }
 
-    /**
-     * Revert wallet balance changes
-     */
-    protected function revertWalletBalance(Transaction $transaction): void
-    {
-        $wallet = Wallet::find($transaction->wallet_id);
-        
-        if (!$wallet) return;
+            $spent = Transaction::where('user_id', $user->id)
+                ->where('type', 'EXPENSE')
+                ->where('category', $transaction->category)
+                ->whereBetween('date', [$start, $end])
+                ->sum('amount');
 
-        if ($transaction->type === 'INCOME') {
-            $wallet->decrement('balance', $transaction->amount);
-        } elseif ($transaction->type === 'EXPENSE') {
-            $wallet->increment('balance', $transaction->amount);
-        } elseif ($transaction->type === 'TRANSFER' && $transaction->to_wallet_id) {
-            // Revert source wallet
-            $wallet->increment('balance', $transaction->amount);
-            
-            // Revert destination wallet
-            $toWallet = Wallet::find($transaction->to_wallet_id);
-            if ($toWallet) {
-                $toWallet->decrement('balance', $transaction->amount);
+            $percentage = ($spent / $budget->limit) * 100;
+            $budget->percentage = round($percentage); 
+
+            if ($percentage >= 90) {
+                // Determine notification type based on budget period
+                $periodLabel = $budget->period === 'WEEKLY' ? 'Mingguan' : ($budget->period === 'YEARLY' ? 'Tahunan' : 'Bulanan');
+                
+                // Add period info to notification message via dynamic property or constructor
+                // Actually constructor takes budget object, so let's modify budget object slightly or just rely on standard message
+                // Standard message: "Pengeluaran untuk kategori 'Makan' telah mencapai..."
+                // Maybe append period to category name temporarily? No that's hacky.
+                // Let's just notify. The BudgetExceeded class reads $budget->percentage.
+                // If we want to distinguish period in message, we should update BudgetExceeded.
+                // For now, let's just trigger it.
+                $user->notify(new \App\Notifications\BudgetExceeded($budget, $transaction));
             }
         }
     }

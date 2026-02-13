@@ -83,10 +83,10 @@ export default function WalletsIndex({ auth, wallets }: PageProps<{ wallets: Wal
 
     const getWalletGradient = (type: string) => {
         switch (type) {
-            case 'BANK': return 'from-blue-600 via-blue-700 to-blue-900';
-            case 'E-WALLET': return 'from-purple-600 via-indigo-700 to-indigo-900';
-            case 'CASH': return 'from-emerald-600 via-teal-700 to-teal-900';
-            default: return 'from-slate-600 to-slate-800';
+            case 'BANK': return 'from-[#1e3a8a] via-[#2563eb] to-[#3b82f6] shadow-blue-500/20'; // Modern Blue
+            case 'E-WALLET': return 'from-[#7c3aed] via-[#8b5cf6] to-[#a78bfa] shadow-violet-500/20'; // Vibrant Violet
+            case 'CASH': return 'from-[#059669] via-[#10b981] to-[#34d399] shadow-emerald-500/20'; // Fresh Emerald
+            default: return 'from-slate-700 via-slate-800 to-slate-900 shadow-slate-500/20';
         }
     };
 
@@ -152,9 +152,11 @@ export default function WalletsIndex({ auth, wallets }: PageProps<{ wallets: Wal
 
                                 {/* Bottom Row */}
                                 <div className="relative z-10 flex justify-between items-end">
-                                    <div>
-                                        <p className="text-[10px] font-medium opacity-60 uppercase tracking-widest mb-0.5">Saldo</p>
-                                        <p className="text-2xl font-bold">{formatIDR(safeParseFloat(wallet.balance))}</p>
+                                    <div className="w-full">
+                                        <p className="text-[10px] font-medium opacity-80 uppercase tracking-widest mb-1">Saldo</p>
+                                        <p className="text-2xl font-bold break-words tracking-tight leading-tight">
+                                            {formatIDR(safeParseFloat(wallet.balance))}
+                                        </p>
                                     </div>
                                     {/* Action buttons on hover */}
                                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

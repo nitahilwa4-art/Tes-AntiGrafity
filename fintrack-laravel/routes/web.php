@@ -13,6 +13,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\Admin\SystemLogController;
+use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect to dashboard if authenticated, otherwise to login
@@ -49,6 +50,13 @@ Route::middleware(['auth'])->group(function () {
         ->only(['index', 'store', 'update', 'destroy']);
     Route::post('/debts/{debt}/toggle-paid', [DebtController::class, 'togglePaid'])->name('debts.toggle-paid');
     
+    // Notifications API
+    Route::get('/api/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/api/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
+    Route::post('/api/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.readAll');
+    
+    // Assets
+    
     // Assets
     Route::resource('assets', AssetController::class)
         ->only(['index', 'store', 'update', 'destroy']);
@@ -72,7 +80,7 @@ Route::middleware(['auth'])->group(function () {
     // Settings, Export, Notifications, Help (frontend-only pages)
     Route::get('/settings', fn () => \Inertia\Inertia::render('Settings/Index'))->name('settings.index');
     Route::get('/export', fn () => \Inertia\Inertia::render('Export/Index'))->name('export.index');
-    Route::get('/notifications', fn () => \Inertia\Inertia::render('Notifications/Index'))->name('notifications.index');
+    Route::get('/notifications-page', [NotificationController::class, 'page'])->name('notifications.page');
     Route::get('/help', fn () => \Inertia\Inertia::render('Help/Index'))->name('help.index');
     
     // Admin routes (protected by admin middleware)

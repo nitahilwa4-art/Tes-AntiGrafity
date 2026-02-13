@@ -74,7 +74,34 @@ const formatShortIDR = (amount: number) => {
     return formatIDR(amount);
 };
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 text-left">
+                <p className="text-sm font-bold text-slate-800 dark:text-white mb-3 text-center border-b border-slate-100 dark:border-slate-800 pb-2">{label}</p>
+                <div className="space-y-2">
+                    {payload.map((entry: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between gap-6 text-xs">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-full shadow-sm ring-2 ring-white dark:ring-slate-900" style={{ backgroundColor: entry.color }} />
+                                <span className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">{entry.name}</span>
+                            </div>
+                            <span className="text-slate-700 dark:text-slate-200 font-bold font-mono text-sm">
+                                {formatIDR(entry.value)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
+
 export default function Dashboard({
+    // ... (lines 78-403 kept implicitly by context matching, but I need to be careful with replace_file_content limits. I can't replace from 77 to 446 in one go if I want to keep the middle. I should inject CustomTooltip first, then replace Tooltips separately or check if I can do it in chunks.
+    // MultiReplace is better here.
+
     auth, stats, expenseByCategory, budgetProgress, recentTransactions, wallets, upcomingBills, allTransactions, categories
 }: PageProps<{
     stats: Stats;
@@ -282,54 +309,63 @@ export default function Dashboard({
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Balance */}
-                    <div className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all duration-500 group relative overflow-hidden animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="bg-gradient-to-br from-[#1e3a8a] via-[#2563eb] to-[#3b82f6] shadow-xl shadow-blue-500/20 p-6 rounded-[2rem] hover:scale-[1.02] transition-all duration-500 group relative overflow-hidden animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+                        <div className="absolute inset-0 opacity-10">
+                            <div className="absolute -right-10 -top-10 w-32 h-32 bg-white rounded-full blur-2xl" />
+                            <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-white rounded-full blur-2xl" />
+                        </div>
                         <div className="relative z-10">
                             <div className="flex items-center justify-between mb-4">
-                                <div className="p-3 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-2xl transition-transform duration-500 group-hover:scale-110">
+                                <div className="p-3 bg-white/20 text-white rounded-2xl backdrop-blur-sm">
                                     <WalletIcon className="w-6 h-6" />
                                 </div>
-                                <span className={`flex items-center text-xs font-bold px-2 py-1 rounded-full ${stats.netFlow >= 0 ? 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400' : 'text-red-700 bg-red-100 dark:bg-red-900/40 dark:text-red-400'}`}>
+                                <span className={`flex items-center text-xs font-bold px-2 py-1 rounded-full bg-white/20 text-white backdrop-blur-sm`}>
                                     {stats.netFlow >= 0 ? <ArrowUpRight className="w-3 h-3 mr-1" /> : <ArrowDownRight className="w-3 h-3 mr-1" />}
                                     {stats.transactionCount} txn
                                 </span>
                             </div>
-                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Total Saldo</p>
-                            <p className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">{formatShortIDR(stats.balance)}</p>
+                            <p className="text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-1 opacity-80">Total Saldo</p>
+                            <p className="text-3xl font-bold text-white tracking-tight break-words">{formatIDR(stats.balance)}</p>
                         </div>
                     </div>
 
                     {/* Income */}
-                    <div className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all duration-500 group relative overflow-hidden animate-fade-in-up" style={{ animationDelay: '200ms' }}>
-                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="bg-gradient-to-br from-[#059669] via-[#10b981] to-[#34d399] shadow-xl shadow-emerald-500/20 p-6 rounded-[2rem] hover:scale-[1.02] transition-all duration-500 group relative overflow-hidden animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+                        <div className="absolute inset-0 opacity-10">
+                            <div className="absolute -right-10 -top-10 w-32 h-32 bg-white rounded-full blur-2xl" />
+                            <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-white rounded-full blur-2xl" />
+                        </div>
                         <div className="relative z-10">
                             <div className="flex items-center justify-between mb-4">
-                                <div className="p-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-2xl transition-transform duration-500 group-hover:scale-110">
+                                <div className="p-3 bg-white/20 text-white rounded-2xl backdrop-blur-sm">
                                     <TrendingUp className="w-6 h-6" />
                                 </div>
-                                <span className="flex items-center text-xs font-bold px-2 py-1 rounded-full text-emerald-700 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400">
+                                <span className="flex items-center text-xs font-bold px-2 py-1 rounded-full bg-white/20 text-white backdrop-blur-sm">
                                     <ArrowUpRight className="w-3 h-3 mr-1" /> Masuk
                                 </span>
                             </div>
-                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Pemasukan Bulan Ini</p>
-                            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 tracking-tight">{formatShortIDR(stats.totalIncome)}</p>
+                            <p className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest mb-1 opacity-80">Pemasukan Bulan Ini</p>
+                            <p className="text-3xl font-bold text-white tracking-tight break-words">{formatIDR(stats.totalIncome)}</p>
                         </div>
                     </div>
 
                     {/* Expense */}
-                    <div className="glass-card p-6 rounded-[2rem] hover:shadow-xl transition-all duration-500 group relative overflow-hidden animate-fade-in-up" style={{ animationDelay: '300ms' }}>
-                        <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-rose-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="bg-gradient-to-br from-[#9f1239] via-[#e11d48] to-[#f43f5e] shadow-xl shadow-rose-500/20 p-6 rounded-[2rem] hover:scale-[1.02] transition-all duration-500 group relative overflow-hidden animate-fade-in-up" style={{ animationDelay: '300ms' }}>
+                        <div className="absolute inset-0 opacity-10">
+                            <div className="absolute -right-10 -top-10 w-32 h-32 bg-white rounded-full blur-2xl" />
+                            <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-white rounded-full blur-2xl" />
+                        </div>
                         <div className="relative z-10">
                             <div className="flex items-center justify-between mb-4">
-                                <div className="p-3 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded-2xl transition-transform duration-500 group-hover:scale-110">
+                                <div className="p-3 bg-white/20 text-white rounded-2xl backdrop-blur-sm">
                                     <TrendingDown className="w-6 h-6" />
                                 </div>
-                                <span className="flex items-center text-xs font-bold px-2 py-1 rounded-full text-red-700 bg-red-100 dark:bg-red-900/40 dark:text-red-400">
+                                <span className="flex items-center text-xs font-bold px-2 py-1 rounded-full bg-white/20 text-white backdrop-blur-sm">
                                     <ArrowDownRight className="w-3 h-3 mr-1" /> Keluar
                                 </span>
                             </div>
-                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Pengeluaran Bulan Ini</p>
-                            <p className="text-3xl font-bold text-red-600 dark:text-red-400 tracking-tight">{formatShortIDR(stats.totalExpense)}</p>
+                            <p className="text-[10px] font-bold text-rose-100 uppercase tracking-widest mb-1 opacity-80">Pengeluaran Bulan Ini</p>
+                            <p className="text-3xl font-bold text-white tracking-tight break-words">{formatIDR(stats.totalExpense)}</p>
                         </div>
                     </div>
                 </div>
@@ -402,10 +438,8 @@ export default function Dashboard({
                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }} dy={10} interval={trendData.length > 10 ? 'preserveStartEnd' : 0} />
                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }} tickFormatter={formatShortIDR} />
                                     <Tooltip
-                                        cursor={{ fill: '#f8fafc' }}
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
-                                        formatter={(value: number | undefined) => formatIDR(value ?? 0)}
-                                        labelStyle={{ fontWeight: 'bold', color: '#1e293b', marginBottom: '0.5rem' }}
+                                        cursor={{ fill: 'transparent' }}
+                                        content={<CustomTooltip />}
                                     />
                                     <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} iconType="circle" />
                                     <Bar dataKey="Pemasukan" fill="url(#colorIncome)" radius={[6, 6, 0, 0]} maxBarSize={40} animationDuration={1000} />
@@ -443,7 +477,7 @@ export default function Dashboard({
                                                     <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} strokeWidth={0} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip formatter={(value: number | undefined) => formatIDR(value ?? 0)} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                                            <Tooltip content={<CustomTooltip />} />
                                             <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '20px' }} />
                                         </PieChart>
                                     </ResponsiveContainer>

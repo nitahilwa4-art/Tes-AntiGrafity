@@ -46,18 +46,35 @@ class DashboardController extends Controller
 
         // Budget progress
         $budgets = Budget::where('user_id', $user->id)->get();
-        $expenses = $transactions
-            ->where('type', 'EXPENSE')
-            ->groupBy('category')
-            ->map(fn($group) => $group->sum('amount'));
 
-        $budgetProgress = $budgets->map(function ($budget) use ($expenses) {
-            $spent = $expenses->get($budget->category, 0);
+        $budgetProgress = $budgets->map(function ($budget) use ($user) {
+            $now = Carbon::now();
+            $start = null;
+            $end = null;
+
+            if ($budget->period === 'WEEKLY') {
+                $start = $now->copy()->startOfWeek()->format('Y-m-d');
+                $end = $now->copy()->endOfWeek()->format('Y-m-d');
+            } elseif ($budget->period === 'YEARLY') {
+                $start = $now->copy()->startOfYear()->format('Y-m-d');
+                $end = $now->copy()->endOfYear()->format('Y-m-d');
+            } else {
+                // Default to MONTHLY
+                $start = $now->copy()->startOfMonth()->format('Y-m-d');
+                $end = $now->copy()->endOfMonth()->format('Y-m-d');
+            }
+
+            $spent = Transaction::forUser($user->id)
+                ->where('type', 'EXPENSE')
+                ->where('category', $budget->category)
+                ->inDateRange($start, $end)
+                ->sum('amount');
+
             return [
                 'id' => $budget->id,
                 'category' => $budget->category,
                 'limit' => $budget->limit,
-                'spent' => $spent,
+                'spent' => (float) $spent,
                 'percentage' => $budget->limit > 0 ? min(100, round(($spent / $budget->limit) * 100)) : 0,
             ];
         });

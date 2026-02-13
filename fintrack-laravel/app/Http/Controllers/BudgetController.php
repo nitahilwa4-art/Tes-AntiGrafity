@@ -15,27 +15,36 @@ class BudgetController extends Controller
         $user = $request->user();
         $budgets = Budget::where('user_id', $user->id)->get();
 
-        // Calculate spent for each budget
-        $now = Carbon::now();
-        $start = $now->copy()->startOfMonth()->format('Y-m-d');
-        $end = $now->copy()->endOfMonth()->format('Y-m-d');
+        $budgetsWithProgress = $budgets->map(function ($budget) use ($user) {
+            $now = Carbon::now();
+            $start = null;
+            $end = null;
 
-        $expenses = Transaction::forUser($user->id)
-            ->byType('EXPENSE')
-            ->inDateRange($start, $end)
-            ->get()
-            ->groupBy('category')
-            ->map(fn($group) => $group->sum('amount'));
+            if ($budget->period === 'WEEKLY') {
+                $start = $now->copy()->startOfWeek()->format('Y-m-d');
+                $end = $now->copy()->endOfWeek()->format('Y-m-d');
+            } elseif ($budget->period === 'YEARLY') {
+                $start = $now->copy()->startOfYear()->format('Y-m-d');
+                $end = $now->copy()->endOfYear()->format('Y-m-d');
+            } else {
+                // Default to MONTHLY
+                $start = $now->copy()->startOfMonth()->format('Y-m-d');
+                $end = $now->copy()->endOfMonth()->format('Y-m-d');
+            }
 
-        $budgetsWithProgress = $budgets->map(function ($budget) use ($expenses) {
-            $spent = $expenses->get($budget->category, 0);
+            $spent = Transaction::forUser($user->id)
+                ->byType('EXPENSE')
+                ->where('category', $budget->category)
+                ->inDateRange($start, $end)
+                ->sum('amount');
+
             return [
                 'id' => $budget->id,
                 'category' => $budget->category,
                 'limit' => $budget->limit,
                 'period' => $budget->period,
                 'frequency' => $budget->frequency,
-                'spent' => $spent,
+                'spent' => (float) $spent,
                 'remaining' => max(0, $budget->limit - $spent),
                 'percentage' => $budget->limit > 0 ? min(100, round(($spent / $budget->limit) * 100)) : 0,
             ];
@@ -61,10 +70,17 @@ class BudgetController extends Controller
             'frequency' => 'required|in:WEEKLY,MONTHLY,YEARLY',
         ]);
 
-        Budget::create([
-            'user_id' => $request->user()->id,
-            ...$validated,
-        ]);
+        Budget::updateOrCreate(
+            [
+                'user_id' => $request->user()->id,
+                'category' => $validated['category'],
+                'period' => $validated['period'],
+                'frequency' => $validated['frequency'],
+            ],
+            [
+                'limit' => $validated['limit'],
+            ]
+        );
 
         return redirect()->back()->with('success', 'Anggaran berhasil ditambahkan');
     }

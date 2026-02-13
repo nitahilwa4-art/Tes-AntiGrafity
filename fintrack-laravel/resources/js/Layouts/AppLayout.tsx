@@ -16,18 +16,15 @@ interface LayoutProps {
 
 interface Notification {
     id: string;
-    title: string;
-    message: string;
-    type: 'ALERT' | 'WARNING' | 'SUCCESS' | 'INFO';
-    date: string;
-    isRead: boolean;
+    data: {
+        title: string;
+        message: string;
+        type: 'ALERT' | 'WARNING' | 'SUCCESS' | 'INFO';
+        link?: string;
+    };
+    created_at: string;
+    read_at: string | null;
 }
-
-const MOCK_NOTIFICATIONS: Notification[] = [
-    { id: '1', title: 'Tagihan Listrik', message: 'Tagihan Listrik jatuh tempo besok!', type: 'ALERT', date: new Date().toISOString(), isRead: false },
-    { id: '2', title: 'Gaji Masuk', message: 'Gaji bulan Oktober sudah dicatat.', type: 'SUCCESS', date: new Date(Date.now() - 3600000).toISOString(), isRead: false },
-    { id: '3', title: 'Peringatan Budget', message: 'Budget "Makan" sisa 10%.', type: 'WARNING', date: new Date(Date.now() - 7200000).toISOString(), isRead: false },
-];
 
 export default function AppLayout({ header, children }: PropsWithChildren<LayoutProps>) {
     const user = usePage().props.auth.user as User;
@@ -56,16 +53,44 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
 
     // Notification state
     const [isNotifOpen, setIsNotifOpen] = useState(false);
-    const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+    const [notifications, setNotifications] = useState<any[]>([]);
     const notifRef = useRef<HTMLDivElement>(null);
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    const unreadCount = notifications.length;
 
-    const handleMarkAllRead = () => {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    const fetchNotifications = async () => {
+        try {
+            const res = await fetch(route('notifications.index'));
+            const data = await res.json();
+            setNotifications(data);
+        } catch (error) {
+            console.error('Failed to fetch notifications', error);
+        }
     };
 
-    const handleNotificationClick = (id: string) => {
-        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    useEffect(() => {
+        fetchNotifications();
+        // Optional: Poll every 30 seconds
+        const interval = setInterval(fetchNotifications, 30000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleMarkAllRead = async () => {
+        try {
+            await router.post(route('notifications.readAll'));
+            setNotifications([]);
+        } catch (error) {
+            console.error('Failed to mark all read', error);
+        }
+    };
+
+    const handleNotificationClick = async (id: string, link?: string) => {
+        try {
+            await router.post(route('notifications.read', id));
+            setNotifications(prev => prev.filter(n => n.id !== id));
+            if (link) router.visit(link);
+        } catch (error) {
+            console.error('Failed to mark read', error);
+        }
     };
 
     useEffect(() => {
@@ -78,7 +103,7 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const getNotifIcon = (type: Notification['type']) => {
+    const getNotifIcon = (type: string) => {
         switch (type) {
             case 'WARNING': return <AlertTriangle className="w-4 h-4 text-amber-500" />;
             case 'ALERT': return <AlertTriangle className="w-4 h-4 text-red-500" />;
@@ -163,7 +188,7 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
                                     <NavItem href={route('profile.edit')} icon={UserIcon} label="Profil Saya" active={currentRoute === 'profile.edit'} />
                                     <NavItem href={route('settings.index')} icon={Settings} label="Pengaturan" active={currentRoute?.startsWith('settings') ?? false} />
                                     <NavItem href={route('export.index')} icon={FileDown} label="Export Data" active={currentRoute?.startsWith('export') ?? false} />
-                                    <NavItem href={route('notifications.index')} icon={Bell} label="Notifikasi" active={currentRoute?.startsWith('notifications') ?? false} />
+                                    <NavItem href={route('notifications.page')} icon={Bell} label="Notifikasi" active={currentRoute?.startsWith('notifications') ?? false} />
                                     <NavItem href={route('help.index')} icon={HelpCircle} label="Bantuan" active={currentRoute?.startsWith('help') ?? false} />
                                 </div>
                             </div>
@@ -252,26 +277,26 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
                                                 <p className="text-xs">Tidak ada notifikasi baru</p>
                                             </div>
                                         ) : (
-                                            notifications.slice(0, 5).map((notif) => (
+                                            notifications.map((notif) => (
                                                 <div
                                                     key={notif.id}
-                                                    onClick={() => handleNotificationClick(notif.id)}
-                                                    className={`p-4 border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex gap-3 ${!notif.isRead ? 'bg-indigo-50/40 dark:bg-indigo-900/10' : ''}`}
+                                                    onClick={() => handleNotificationClick(notif.id, notif.data.link)}
+                                                    className={`p-4 border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex gap-3 bg-indigo-50/40 dark:bg-indigo-900/10`}
                                                 >
-                                                    <div className={`mt-1 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${notif.type === 'ALERT' || notif.type === 'WARNING' ? 'bg-red-100 text-red-500' :
-                                                        notif.type === 'SUCCESS' ? 'bg-emerald-100 text-emerald-500' :
+                                                    <div className={`mt-1 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${notif.data.type === 'ALERT' || notif.data.type === 'WARNING' ? 'bg-red-100 text-red-500' :
+                                                        notif.data.type === 'SUCCESS' ? 'bg-emerald-100 text-emerald-500' :
                                                             'bg-blue-100 text-blue-500'
                                                         }`}>
-                                                        {getNotifIcon(notif.type)}
+                                                        {getNotifIcon(notif.data.type)}
                                                     </div>
                                                     <div className="flex-1">
                                                         <div className="flex justify-between items-start mb-0.5">
-                                                            <p className={`text-sm font-bold ${!notif.isRead ? 'text-slate-800 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>{notif.title}</p>
-                                                            {!notif.isRead && <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>}
+                                                            <p className={`text-sm font-bold text-slate-800 dark:text-white`}>{notif.data.title}</p>
+                                                            <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
                                                         </div>
-                                                        <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{notif.message}</p>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{notif.data.message}</p>
                                                         <p className="text-[10px] text-slate-400 mt-1.5">
-                                                            {new Date(notif.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -280,9 +305,13 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
                                     </div>
 
                                     <div className="p-2 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700 text-center">
-                                        <button className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline py-1">
+                                        <Link
+                                            href={route('notifications.page')}
+                                            onClick={() => setIsNotifOpen(false)}
+                                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline py-1 block"
+                                        >
                                             Lihat Semua Notifikasi
-                                        </button>
+                                        </Link>
                                     </div>
                                 </div>
                             )}
@@ -329,8 +358,8 @@ export default function AppLayout({ header, children }: PropsWithChildren<Layout
                                     key={item.label}
                                     href={item.href}
                                     className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all duration-300 min-w-[60px] ${item.active
-                                            ? 'text-indigo-600 dark:text-indigo-400'
-                                            : 'text-slate-400 dark:text-slate-500 active:text-indigo-600 dark:active:text-indigo-400'
+                                        ? 'text-indigo-600 dark:text-indigo-400'
+                                        : 'text-slate-400 dark:text-slate-500 active:text-indigo-600 dark:active:text-indigo-400'
                                         }`}
                                 >
                                     <div className="relative">

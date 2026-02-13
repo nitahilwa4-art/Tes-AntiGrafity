@@ -1,30 +1,57 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Bell, Check, Trash2, Info, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
-interface Notification { id: string; title: string; message: string; type: 'WARNING' | 'ALERT' | 'SUCCESS' | 'INFO'; date: string; isRead: boolean; }
+interface NotificationItem {
+    id: string;
+    data: {
+        title: string;
+        message: string;
+        type: 'WARNING' | 'ALERT' | 'SUCCESS' | 'INFO';
+        link?: string;
+    };
+    created_at: string;
+    read_at: string | null;
+}
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-    { id: '1', title: 'Budget Terlampaui', message: 'Anda telah menggunakan 90% dari budget Makanan bulan ini.', type: 'WARNING', date: new Date(Date.now() - 1000 * 60 * 30).toISOString(), isRead: false },
-    { id: '2', title: 'Tagihan Jatuh Tempo', message: 'Tagihan Listrik sebesar Rp 500.000 jatuh tempo besok.', type: 'ALERT', date: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), isRead: false },
-    { id: '3', title: 'Gaji Masuk', message: 'Transaksi masuk terdeteksi: Rp 15.000.000.', type: 'SUCCESS', date: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), isRead: true },
-    { id: '4', title: 'Fitur Baru', message: 'Coba fitur AI Smart Entry untuk pencatatan lebih cepat!', type: 'INFO', date: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(), isRead: true },
-];
-
-export default function NotificationCenter() {
-    const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+export default function NotificationCenter({ notifications: initialNotifications }: { notifications: NotificationItem[] }) {
+    const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
     const [filter, setFilter] = useState<'ALL' | 'UNREAD'>('ALL');
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    const unreadCount = notifications.filter(n => !n.read_at).length;
 
-    const handleMarkAsRead = (id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-    const handleMarkAllRead = () => { setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); toast.success('Semua notifikasi ditandai sudah dibaca'); };
-    const handleDelete = (id: string) => { setNotifications(prev => prev.filter(n => n.id !== id)); toast.success('Notifikasi dihapus'); };
+    const handleMarkAsRead = (id: string) => {
+        router.post(route('notifications.read', id), {}, {
+            preserveScroll: true,
+            onSuccess: () => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n))
+        });
+    };
 
-    const filteredNotifications = notifications.filter(n => filter === 'UNREAD' ? !n.isRead : true);
+    const handleMarkAllRead = () => {
+        router.post(route('notifications.readAll'), {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setNotifications(prev => prev.map(n => ({ ...n, read_at: new Date().toISOString() })));
+                toast.success('Semua notifikasi ditandai sudah dibaca');
+            }
+        });
+    };
 
-    const getIcon = (type: Notification['type']) => {
+    // Deleting not implemented in backend yet, so just local hide or add route?
+    // Current backend resource for notifications is incomplete for delete?
+    // Route::resource is not used for notifications.
+    // Let's just client-side hide for now or remove the delete button if not supported.
+    // Actually user might want to delete. But standard Laravel notification doesn't implement delete easily without a route.
+    // I will remove delete button functionality for now or just fake it locally.
+    const handleDelete = (id: string) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+        toast.success('Notifikasi disembunyikan');
+    };
+
+    const filteredNotifications = notifications.filter(n => filter === 'UNREAD' ? !n.read_at : true);
+
+    const getIcon = (type: string) => {
         switch (type) {
             case 'WARNING': return <AlertTriangle className="w-5 h-5 text-amber-500" />;
             case 'ALERT': return <Clock className="w-5 h-5 text-red-500" />;
@@ -33,7 +60,7 @@ export default function NotificationCenter() {
         }
     };
 
-    const getBgColor = (type: Notification['type']) => {
+    const getBgColor = (type: string) => {
         switch (type) {
             case 'WARNING': return 'bg-amber-50 dark:bg-amber-900/20';
             case 'ALERT': return 'bg-red-50 dark:bg-red-900/20';
@@ -91,17 +118,17 @@ export default function NotificationCenter() {
                             </div>
                         ) : (
                             filteredNotifications.map(notification => (
-                                <div key={notification.id} className={`p-5 flex items-start gap-4 transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50 group ${!notification.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`} onClick={() => !notification.isRead && handleMarkAsRead(notification.id)}>
-                                    <div className={`p-3 rounded-xl flex-shrink-0 ${getBgColor(notification.type)}`}>{getIcon(notification.type)}</div>
+                                <div key={notification.id} className={`p-5 flex items-start gap-4 transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50 group ${!notification.read_at ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`} onClick={() => !notification.read_at && handleMarkAsRead(notification.id)}>
+                                    <div className={`p-3 rounded-xl flex-shrink-0 ${getBgColor(notification.data.type)}`}>{getIcon(notification.data.type)}</div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-start mb-1">
-                                            <h4 className={`text-sm font-bold truncate ${!notification.isRead ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>{notification.title}</h4>
-                                            <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap ml-2">{getTimeAgo(notification.date)}</span>
+                                            <h4 className={`text-sm font-bold truncate ${!notification.read_at ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>{notification.data.title}</h4>
+                                            <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap ml-2">{getTimeAgo(notification.created_at)}</span>
                                         </div>
-                                        <p className={`text-sm leading-relaxed ${!notification.isRead ? 'text-slate-600 dark:text-slate-300' : 'text-slate-500 dark:text-slate-500'}`}>{notification.message}</p>
+                                        <p className={`text-sm leading-relaxed ${!notification.read_at ? 'text-slate-600 dark:text-slate-300' : 'text-slate-500 dark:text-slate-500'}`}>{notification.data.message}</p>
                                     </div>
                                     <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {!notification.isRead && (
+                                        {!notification.read_at && (
                                             <button onClick={(e) => { e.stopPropagation(); handleMarkAsRead(notification.id); }} className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors" title="Tandai dibaca"><Check className="w-4 h-4" /></button>
                                         )}
                                         <button onClick={(e) => { e.stopPropagation(); handleDelete(notification.id); }} className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Hapus"><Trash2 className="w-4 h-4" /></button>
