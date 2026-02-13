@@ -41,8 +41,14 @@ class BudgetController extends Controller
             ];
         });
 
+        $categories = \App\Models\Category::userCategories($user->id)
+            ->byType('EXPENSE')
+            ->orderBy('name')
+            ->get();
+
         return Inertia::render('Budgets/Index', [
             'budgets' => $budgetsWithProgress,
+            'categories' => $categories,
         ]);
     }
 

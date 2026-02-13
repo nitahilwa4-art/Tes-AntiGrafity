@@ -595,7 +595,14 @@ export default function Dashboard({
                                     <button
                                         key={type}
                                         type="button"
-                                        onClick={() => { setInputType(type); setData('type', type); }}
+                                        onClick={() => {
+                                            setInputType(type);
+                                            setData(d => ({
+                                                ...d,
+                                                type,
+                                                category: ''
+                                            }));
+                                        }}
                                         className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${inputType === type
                                             ? type === 'INCOME' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
                                                 : type === 'EXPENSE' ? 'bg-red-500 text-white shadow-lg shadow-red-500/30'
@@ -644,7 +651,20 @@ export default function Dashboard({
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Kategori</label>
-                                        <input type="text" value={data.category} onChange={(e) => setData('category', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="Makanan" required />
+                                        <select
+                                            value={data.category}
+                                            onChange={(e) => setData('category', e.target.value)}
+                                            className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50"
+                                            required
+                                        >
+                                            <option value="">Pilih</option>
+                                            {categories
+                                                .filter(c => c.type === inputType)
+                                                .map(cat => (
+                                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                                ))
+                                            }
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Tanggal</label>

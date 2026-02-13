@@ -19,7 +19,13 @@ interface Budget {
 const formatIDR = (amount: number) =>
     new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
 
-export default function BudgetsIndex({ auth, budgets }: PageProps<{ budgets: Budget[] }>) {
+interface Category {
+    id: number;
+    name: string;
+    type: string;
+}
+
+export default function BudgetsIndex({ auth, budgets, categories }: PageProps<{ budgets: Budget[], categories: Category[] }>) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
     const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -183,7 +189,17 @@ export default function BudgetsIndex({ auth, budgets }: PageProps<{ budgets: Bud
                             <form onSubmit={handleSubmit} className="space-y-3">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 ml-1">Kategori</label>
-                                    <input type="text" required value={data.category} onChange={(e) => setData('category', e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50" placeholder="Makanan" />
+                                    <select
+                                        value={data.category}
+                                        onChange={(e) => setData('category', e.target.value)}
+                                        className="w-full px-4 py-2.5 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900/50"
+                                        required
+                                    >
+                                        <option value="">Pilih Kategori</option>
+                                        {categories.map(cat => (
+                                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
